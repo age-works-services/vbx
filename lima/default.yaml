@@ -1,0 +1,38 @@
+# VBX base guest. The launcher applies resources and explicit project mounts.
+vmType: qemu
+arch: x86_64
+cpus: 2
+memory: 4GiB
+disk: 30GiB
+
+user:
+  name: dev
+  home: /home/dev
+  # Leave uid unset so Lima uses the host user's UID for shared-file ownership.
+
+images:
+  - location: https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img
+    arch: x86_64
+
+mountType: 9p
+mounts: [] # VBX_PROJECT_MOUNT
+
+containerd:
+  system: false
+  user: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -eu
+      # Lima can invoke system provisioning again after a restart.
+      [ ! -f /var/lib/vbx/base-ready ] || exit 0
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get upgrade -y --with-new-pkgs --no-remove
+      apt-get install -y --no-install-recommends \
+        ca-certificates curl
+      rm -rf /var/lib/apt/lists/*
+      mkdir -p /var/lib/vbx
+      touch /var/lib/vbx/base-ready
