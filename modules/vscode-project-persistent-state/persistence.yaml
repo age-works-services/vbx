@@ -1,0 +1,6 @@
+persistence:
+  paths:
+    - guest: ~/.vscode-server/extensions
+      data: extensions
+    - guest: ~/.vscode-server/data/Machine
+      data: machine-settings

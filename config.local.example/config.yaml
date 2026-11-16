@@ -1,0 +1,19 @@
+version: 1
+resources:
+  cpus: 2
+  memory: 4GiB
+  disk: 30GiB
+launch:
+  default: vscode
+mounts: []
+# Optional general development packages. Pi declares its own prerequisites.
+apt:
+  packages:
+    - git
+    - build-essential
+# Add node, then pi for Pi/subagents/prompt templates.
+# Optionally add pi-web-fetch after pi for Python/browser web extraction.
+# See docs/manuals/recipes.md for lifecycle policy and upstream security notes.
+modules: []
+# Add .env after copying env.example and filling in your keys.
+envFiles: []
