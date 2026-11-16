@@ -1,29 +1,68 @@
 # Configuration
 
+On this page: [Global example](#example-global-configuration) ·
+[Project example](#example-project-configuration) · [Settings](#supported-settings) ·
+[Precedence](#files-and-precedence) · [Inspect](#inspect-effective-configuration) ·
+[Validation](#validation-during-creation) · [Apply changes](#reuse-and-configuration-changes) ·
+[Managed files](#files-vbx-manages)
+
 ## Guest account
 
 New VMs use account `dev` with home `/home/dev`. Lima keeps its default numeric
-UID mapping to the host user, so shared-file ownership does not depend on the
-account names matching. VBX does not hard-code UID 1000.
+UID mapping to the host user for shared-file ownership.
 
-VMs retain their creation-time account and home. VBX does not rename accounts
-in existing guests.
+VMs retain their creation-time account and home.
 
 ## Files and precedence
 
-1. Built-in defaults: 2 CPUs, 4GiB memory, 30GiB disk, VS Code launch.
-2. Local defaults: `config.local/config.yaml` in the VBX checkout.
-3. Project settings: `.vbx/config.yaml` in the project directory.
+All settings merge from least to most important:
 
-Configuration files are optional. Each file must include `version: 1`.
-Project scalar settings override local settings. Mount lists append in that order;
-repeated targets and overlapping host directories are errors. `mounts: []` adds no
-mounts; it does not clear a previous layer. Module lists append and deduplicate.
-Environment-file lists append, and later files override earlier variable values.
-APT package lists also append and deduplicate identical requirements. Different
-version constraints remain separate so APT can satisfy them together or fail.
-Empty lists do not clear inherited entries. Recipes run in the resulting module
-list order, without implicit module dependencies.
+1. VBX defaults: 2 CPUs, 4GiB memory, 30GiB disk, VS Code launch.
+2. Settings from globally selected VBX modules, in selection order.
+3. User global settings under `${XDG_CONFIG_HOME:-$HOME/.config}/vbx/`.
+4. Settings from project-selected modules, in selection order.
+5. Project config settings under `PROJECT/.vbx/`.
+
+Each source can provide `config.yaml` and `persistence.yaml`. VBX reads the
+sidecar first, then inline settings. `config.yaml` requires `version: 1`;
+`persistence.yaml` contains only `persistence.paths` and needs no version field.
+Module settings use the same schema as user and project settings.
+
+Later explicit scalars override earlier values. Mount entries merge by guest
+`target`, and persistence entries merge by exact `guest`; later entries replace
+earlier complete entries. Duplicate keys within a file fail. Effective host
+mount overlaps and parent/child persistence mappings fail validation.
+
+Module, environment-file, and APT lists append and deduplicate identical entries.
+Later environment files override earlier variable assignments. Different APT
+constraints remain separate requirements for the combined solver phase. Empty
+lists preserve inherited entries. Module scripts run once in first-selection
+order. A module selected in both scopes contributes settings at both module
+layers.
+
+## Example global configuration
+
+For Git and compiler tools in new VMs, create the global directory:
+
+```sh
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/vbx"
+```
+
+Create `config.yaml` in that directory with the following contents. If it already
+exists, add the packages to its `apt.packages` list and keep its other settings.
+
+```yaml
+version: 1
+apt:
+  packages:
+    - git
+    - build-essential
+```
+
+Select tools before first creation. For a ready VM, follow
+[applying changes](#reuse-and-configuration-changes).
+The checkout's `config.local.example/` also contains a package-selection example,
+optional environment keys, and Pi home-file examples. Copy only what you need.
 
 ## Example project configuration
 
@@ -54,25 +93,29 @@ mounts:
 ```
 
 Create the source directories before starting VBX. Project-relative sources resolve
-from the project root. Local relative sources resolve from `config.local/`.
+from the project root. Global relative sources resolve from
+`${XDG_CONFIG_HOME:-$HOME/.config}/vbx/`.
 Absolute paths and `~/` are supported. Environment-variable expansion is not performed.
 
 ## Supported settings
 
-| Setting | Values |
-| --- | --- |
-| `version` | `1` |
-| `resources.cpus` | Positive integer |
-| `resources.memory` | Positive integer followed by `MiB`, `GiB`, or `TiB` |
-| `resources.disk` | Positive integer followed by `MiB`, `GiB`, or `TiB` |
-| `launch.default` | `vscode`, `terminal`, or `workspace-only` |
-| `launch.folder` | Absolute guest path opened by VS Code |
-| `mounts[].source` | Existing host directory |
-| `mounts[].target` | Immediate child of `/workspaces`, such as `/workspaces/api` |
-| `mounts[].readonly` | `true` or `false`; defaults to `false` |
-| `modules[]` | Explicitly ordered bundled recipes: `dev-tools`, `node`, `pi`, or `pi-web-fetch` (select after `pi`) |
-| `apt.packages[]` | Package name, optionally `package (>= VERSION)`, `package (<= VERSION)`, or `package (= VERSION)` |
-| `envFiles[]` | Existing dotenv-style file; paths follow the same local/project rules as mount sources |
+Defaults below apply before configuration layers merge.
+
+| Setting | Values | Default |
+| --- | --- | --- |
+| `version` | `1` | Required in `config.yaml` |
+| `resources.cpus` | Positive integer | `2` |
+| `resources.memory` | Positive integer followed by `MiB`, `GiB`, or `TiB` | `4GiB` |
+| `resources.disk` | Positive integer followed by `MiB`, `GiB`, or `TiB` | `30GiB` |
+| `launch.default` | `vscode`, `terminal`, or `workspace-only` | `vscode` |
+| `launch.folder` | Absolute guest path opened by VS Code | Automatic (see below) |
+| `mounts[].source` | Existing host directory | Required per entry |
+| `mounts[].target` | Immediate child of `/workspaces`, such as `/workspaces/api` | Required per entry |
+| `mounts[].readonly` | `true` or `false` | `false` |
+| `modules[]` | Explicitly ordered [bundled modules](recipes.md#selection) | `[]` |
+| `apt.packages[]` | Package name, optionally `package (>= VERSION)`, `package (<= VERSION)`, or `package (= VERSION)` | `[]` |
+| `envFiles[]` | Existing dotenv-style file; same path rules as mount sources | `[]` |
+| `persistence.paths[]` | `guest: ~/DIRECTORY` and `data: RELATIVE_DIRECTORY`; see [persistence](persistence.md) | `[]` |
 
 The primary project is writable at `/workspaces/<project-slug>`. Terminals and
 explicit commands start there. VS Code opens that directory when no extra mounts
@@ -84,29 +127,34 @@ supports plain scalars, single-quoted strings (escape `'` as `''`), JSON-compati
 double-quoted strings, comments, and empty lists (`mounts: []`, `modules: []`,
 `envFiles: []`, or nested `apt:` / `packages: []`). It rejects other YAML constructs,
 unknown settings, duplicate keys, and tabs. Configuration is data; it is never
-sourced as shell code. No external YAML parser is required.
+sourced as shell code.
+VM snapshots require UTF-8 configuration paths and values.
 
-## Validate before creation
+## Inspect effective configuration
 
-From the project directory:
+Run `vbx show-project-effective-setup` from the project directory, or use
+`vbx show-project-effective-setup --project DIR`. The Configuration section shows
+merged settings with defaults filled in and paths resolved. It uses the same
+setting names and YAML structure as `config.yaml`. `apt.packages` includes
+requirements from selected modules' `apt.txt` files and all configuration layers.
+Provisioning captures this same resolved package list.
 
-```sh
-vbx --render
-```
+The Home overlay and persistence section shows the merged home entries, source
+metadata, and persistence connections.
 
-This validates the desired YAML configuration and referenced file/directory paths,
-then prints the Lima template without creating a VM. It does not display modules
-or credentials, or parse environment-file contents. Lima validates the template
-again during creation; VBX checks environment-file contents before starting a VM.
+## Validation during creation
+
+During VM creation, VBX validates the desired configuration, referenced
+file/directory paths, and environment-file contents. Lima validates the generated
+VM template before startup. Validation errors stop creation.
 
 Creating a VM with a project `.vbx/` directory requires interactive approval.
-APT requirements allow package names (optionally `:architecture`) and a single
-`>=`, `<=`, or `=` Debian version constraint. Alternatives, flags, URLs, shell
-expressions, and arbitrary APT directives are unsupported. Names and constraints
-are data; APT resolves them against configured guest repositories. VBX prevents
-package removals and does not implement its own version solver.
-See [provisioning](provisioning.md) for module selection, optional API-key files,
-home overlays, project setup, and failure recovery.
+APT resolves the combined [package requirements](recipes.md#apt-requirements)
+against guest repositories. Conflicts and unavailable versions stop setup;
+VBX prevents package removals.
+See [modules](recipes.md) for tool selection, [credentials](credentials.md) for
+environment files, [provisioning](provisioning.md) for home overlays and setup,
+and [troubleshooting](troubleshooting.md) for failures.
 
 ## Reuse and configuration changes
 
@@ -116,15 +164,18 @@ change a ready VM.
 To apply changes to a ready VM:
 
 ```sh
-vbx --remove
-vbx --vscode
+vbx remove
+vbx start --vscode
 ```
 
-Removal discards guest-local data. Failed creation leaves a disposable incomplete
+Removal discards guest-local data. [Back it up first](persistence.md#back-up-guest-local-files).
+Failed creation leaves a disposable incomplete
 VM for inspection. Correct its setup inputs, then remove and recreate it. Ordinary
-retries use the original snapshot; there is no in-place setup refresh.
+retries use the original snapshot.
 
-VBX manages its own `vbx-` instances and does not adopt other VMs.
+VBX derives each managed `vbx-` instance name from the canonical project path.
+See [project identity](commands.md#what-counts-as-a-project) before using a
+subdirectory, moving a project, or switching worktrees.
 
 ## Files VBX manages
 
@@ -132,9 +183,11 @@ VBX manages its own `vbx-` instances and does not adopt other VMs.
 | --- | --- |
 | Lima VM data | Lima's configured home (`LIMA_HOME`, normally `~/.lima`) |
 | Saved configuration, creation status, and retained setup archive | `${XDG_STATE_HOME:-$HOME/.local/state}/vbx/instances/` |
+| Retained module data | `${XDG_DATA_HOME:-$HOME/.local/share}/vbx/projects/<project-id>/modules/<module>/` |
+| Configuration-defined retained data | `${XDG_DATA_HOME:-$HOME/.local/share}/vbx/projects/<project-id>/config/` |
 | Operation locks | `${XDG_STATE_HOME:-$HOME/.local/state}/vbx/locks/` |
 | SSH configuration links | `${XDG_CONFIG_HOME:-$HOME/.config}/vbx/ssh/` |
 
-VBX prints the SSH `Include` line with `vbx --ssh-config`. It does not edit
+VBX prints the SSH `Include` line with `vbx show-host-ssh-config-line`. It does not edit
 `~/.ssh/config`. Creation and startup are locked per project; the lock is released
 before opening the editor, shell, or command so multiple sessions can coexist.

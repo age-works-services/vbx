@@ -19,6 +19,7 @@ strict_npm() {
     export npm_config_dangerously_allow_all_scripts=false
 }
 strict_npm
+if [[ -f "$bundle/persistence.sh" ]]; then bash "$bundle/persistence.sh" mounts "$bundle" "$instance"; fi
 if [[ -f "$bundle/apt.txt" && ! -f "$state/apt.done" ]]; then
     printf 'Installing declared APT requirements\n'
     sudo -n bash "$bundle/apt-install.sh" "$bundle/apt.txt"
@@ -28,9 +29,10 @@ fi
 while IFS= read -r module; do
     [[ -n "$module" ]] || continue
     [[ "$module" =~ ^[a-z][a-z0-9-]*$ ]] || { printf 'Invalid module identifier\n' >&2; exit 1; }
+    [[ -f "$bundle/modules/$module/setup.sh" ]] || continue
     [[ ! -f "$state/$module.done" ]] || continue
     printf 'Installing module: %s\n' "$module"
-    bash "$bundle/modules/$module/setup.sh"
+    VBX_MODULE_DIR="$bundle/modules/$module" VBX_MODULE_DATA_DIR="/mnt/vbx-data/$module" bash "$bundle/modules/$module/setup.sh"
     touch "$state/$module.done"
 done < "$bundle/modules.list"
 
@@ -59,12 +61,15 @@ install -m 600 "$bundle/environment.sh" "$HOME/.config/vbx/environment.sh"
 sudo -n bash "$bundle/guest-shell-system.sh"
 source "$HOME/.config/vbx/environment.sh"
 strict_npm
+if [[ -f "$bundle/persistence.sh" ]]; then bash "$bundle/persistence.sh" apply "$bundle" "$instance"; fi
 
 if [[ -f "$bundle/project-setup.sh" ]]; then
     printf 'Running project setup\n'
     cd -- "$project"
     bash "$bundle/project-setup.sh"
 fi
+
+if [[ -f "$bundle/persistence.sh" ]]; then bash "$bundle/persistence.sh" verify "$bundle" "$instance"; fi
 
 touch "$state/complete"
 printf 'Provisioning complete\n'

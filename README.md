@@ -1,193 +1,131 @@
 # VBX
 
-VBX gives each project directory a persistent Linux development VM. It keeps
-project toolchains, system packages, and coding-agent execution inside the guest
-while you work through VS Code, a terminal, explicit commands, or any ssh-enabled orchestrator like herdr and alike. 
-## Why VBX exists
+VBX gives each project directory a persistent Ubuntu development VM on a local
+Linux x86_64 host. Keep source files on the host and run toolchains, coding
+agents, and commands in the guest. VS Code Remote SSH and terminals share the
+same machine. Lima and QEMU run the VM with KVM acceleration.
 
-Working across projects often means installing different runtimes, compilers,
-command-line tools, and supporting services. Installing everything on the host
-mixes those dependencies into one machine. Setting up separate VMs by hand adds
-repeated work: choosing an image, mounting source directories, installing tools,
-configuring SSH, and connecting the editor.
+## Quickstart
 
-VBX packages that setup into a project-level workflow:
+### 1. Check the host
 
-- **Give each project its own development machine.** Each project directory maps
-  to a separate Ubuntu VM with its own installed packages, home directory, and
-  guest-local state. Projects with the same directory name still get distinct VMs.
-- **Keep source files on the host.** VBX mounts your working tree directly into
-  the guest. Host tools and guest tools see the same files, with no separate clone
-  or synchronization step. Removing the VM leaves the host working tree intact.
-- **Use the same machine from your editor and shell.** VS Code Remote SSH,
-  interactive terminals, explicit commands, and coding agents share the guest's
-  files and tools.
-- **Describe setup once.** Local defaults and project configuration select
-  resources, additional mounts, and guest packages. Home overlays, environment
-  files, and setup scripts supply personal and project needs.
-- **Keep the environment between sessions.** Closing the editor or terminal
-  leaves the VM available. Stopping and starting it preserves installed tools
-  and guest-local files. Normal reuse does not repeat provisioning.
+You need Linux x86_64, hardware virtualization, read/write access to `/dev/kvm`,
+latest stable Lima (`limactl`), QEMU (`qemu-system-x86_64`, `qemu-img`), and OpenSSH.
+Building VBX also requires Git, Make, and Go 1.25 or later.
 
-## Isolated coding-agent runs
+Allow 4 GiB guest RAM plus memory for the host. The default 30 GiB guest disk is
+sparse and grows with use. First creation downloads Ubuntu 26.04 LTS minimal,
+upgrades guest packages, and installs your selected tools. Allow several minutes
+or longer depending on the network and tool selection. Creation needs host and
+guest internet access.
 
-Coding agents running in YOLO or automatic-approval mode can execute commands,
-install packages, and change their environment with little supervision. VBX gives
-that work a separate Linux VM with its own kernel, system packages, and home
-directory. The agent's shell commands and processes execute inside the guest.
-Your host OS and its installed toolchains stay outside that guest environment.
+See [host setup](docs/manuals/host-setup.md) for missing prerequisites. Run VBX
+as your normal user, without sudo.
 
-Install and start your chosen agent inside the VM, using its own approval
-settings. VBX does not choose those settings or start an agent automatically.
-You can inspect the same working tree through your editor or terminal, keep the
-VM between sessions, or discard it and create a fresh guest environment.
-
-The isolation boundary still includes what you expose to the guest:
-
-- Writable host mounts let the agent modify those host files, including the
-  project. Use a dedicated worktree or disposable copy for unattended changes.
-- Credentials supplied to the guest are available to its programs. Provide only
-  the credentials the task needs, and mount only the required directories.
-- Guest networking is unrestricted by VBX. This is not a network-isolation policy.
-- Recreating the VM resets guest-local state. It does not undo edits to mounted
-  host files or revoke credentials.
-
-## How it works
-
-From a project directory, run `vbx --vscode`, `vbx --terminal`, or
-`vbx --workspace-only`. On first use, VBX creates an Ubuntu 26.04 LTS minimal VM
-through Lima and QEMU, mounts the project under `/workspaces/`, applies the
-selected setup, and opens the requested interface after setup succeeds.
-Subsequent calls reconnect to that project's VM.
-
-The guest is a full Linux system with its own kernel, systemd, and package
-manager. Tools install inside the guest, using guest sudo where needed. The host
-runs Lima/QEMU and your chosen client tools.
-
-## Operating model
-
-- Setup runs at creation time. Configuration edits take effect through explicit
-  removal and recreation; VBX does not reconcile an existing environment.
-- Failed creation keeps a disposable VM for inspection and prints the commands
-  to remove and recreate it after correcting the error.
-- Fresh creation resolves packages from their repositories. VBX captures setup
-  inputs for retries; it does not lock the entire dependency tree or promise
-  byte-identical rebuilds.
-- Setup scripts and installed tools are trusted code. Guest programs can access
-  configured host mounts and available credentials. A writable project mount
-  lets guest programs modify that host working tree.
-
-The supported host platform is local Linux x86_64 with KVM acceleration. The
-steps below cover installation and daily use.
-
-## 1. Check prerequisites
-
-Run VBX on a **Linux x86_64 host**, as your normal user (without sudo).
-
-| Requirement | Purpose |
-| --- | --- |
-| Hardware virtualization and read/write access to `/dev/kvm` | Run the guest with KVM acceleration |
-| Latest stable Lima (`limactl`) | Manage the VM and its SSH connection |
-| QEMU (`qemu-system-x86_64`, `qemu-img`) | Run the VM and manage its disk |
-| OpenSSH client (`ssh`) | Connect to the guest |
-| Bash, Perl with core `JSON::PP`, `flock`, `tar`, and standard GNU/Linux utilities | Run the launcher and provisioning transport |
-| Host and guest internet access during creation | Download the Ubuntu image and install packages |
-
-Allow enough host RAM for the guest (4 GiB by default) plus the host OS. The
-30 GiB default guest disk is sparse and consumes host storage as it grows.
-
-**VS Code with Remote - SSH is optional**, needed only for `--vscode` (the default
-launch mode). Terminal and command workflows do not require it. Development
-runtimes install inside the guest. Docker and libvirt are not host requirements.
-
-Follow [host setup](docs/manuals/host-setup.md) to install missing prerequisites
-or grant KVM access. Reuse an existing working QEMU/KVM installation.
-
-## 2. Install the launcher
-
-Run on your Linux x86_64 host, from this checkout:
+### 2. Install
 
 ```sh
-mkdir -p "$HOME/.local/bin"
-ln -s "$PWD/vbx" "$HOME/.local/bin/vbx"
+git clone https://github.com/age-works-services/vbx.git
+cd vbx
+make install
 export PATH="$HOME/.local/bin:$PATH"
-vbx --check
+vbx check-host-prerequisites
 ```
 
-If the check fails, follow [host setup](docs/manuals/host-setup.md), then rerun it.
+`make install` builds and installs `~/.local/bin/vbx`. Add that directory to your
+shell's persistent PATH. The executable embeds its runtime assets and does not
+need the checkout to run. See [updating and uninstalling](docs/manuals/installation.md).
 
-## 3. Configure defaults
+### 3. Select tools (optional, before creation)
 
-```sh
-mkdir -p config.local
-cp -rn config.local.example/. config.local/
-```
+Skip this step to try the base Ubuntu VM. Select development tools explicitly:
+use the [global configuration example](docs/manuals/configuration.md#example-global-configuration)
+for Git and compiler tools, or [modules](docs/manuals/recipes.md) for Node, Pi,
+and AWS CLI. Supply [credentials](docs/manuals/credentials.md) and
+[home files or project setup](docs/manuals/provisioning.md) as needed.
 
-Edit `config.local/config.yaml` for your guest resources and tools. The example
-selects Git and compiler tools through `apt.packages`. Add the Ubuntu packages
-your projects need.
+Choose these before first creation. Ready VMs keep their creation-time setup;
+applying later changes requires [backup and recreation](docs/manuals/configuration.md#reuse-and-configuration-changes).
 
-Follow [provisioning](docs/manuals/provisioning.md) to install tools, add API keys,
-copy personal home files, or run project setup. Existing VMs keep their original
-tools and configuration. See [configuration](docs/manuals/configuration.md) for
-resources and mounts.
+### 4. Open a project
 
-## 4. Enable VS Code access (optional)
+Run from the intended project root. VBX uses the exact selected directory and
+does not search for a Git root. Subdirectories and separate worktrees select
+separate VMs. See [project identity](docs/manuals/commands.md#what-counts-as-a-project).
 
-Install **Remote - SSH** (`ms-vscode-remote.remote-ssh`) in host VS Code.
-
-```sh
-vbx --ssh-config
-```
-
-Add the printed `Include` line near the beginning of `~/.ssh/config`.
-
-## 5. Open a project
+No configuration is required for the base VM:
 
 ```sh
 cd /path/to/project
-vbx --vscode
+vbx start --terminal
 ```
 
-Open a remote terminal to build and run your product. Project files appear under
-`/workspaces/`. The guest account is `dev`, with home `/home/dev`.
-No agent starts automatically.
-
-## 6. Other launch modes
+The first start creates the VM and streams setup output. If the project has a
+`.vbx/` directory, VBX asks you to approve its setup. Later starts reuse the VM.
+The guest account is `dev`, home `/home/dev`. No coding agent starts automatically.
+Verify the shell inside the guest:
 
 ```sh
-vbx --terminal
-vbx --workspace-only
-vbx --exec git status
+whoami
+pwd
 ```
 
-If creation fails, correct its inputs and recreate the disposable VM:
+Expect `dev` and `/workspaces/<project-slug>`. Host project files appear at that
+mount, so edits there affect your host files. Run `exit` to return to the host
+shell. Closing the shell leaves the VM running.
+
+To open VS Code from the host, install host VS Code with **Remote - SSH**
+(`ms-vscode-remote.remote-ssh`). Ensure `code` is in PATH. Run:
 
 ```sh
-vbx --remove
-vbx --workspace-only
+vbx show-host-ssh-config-line
 ```
 
-VBX keeps the incomplete VM for inspection until you remove it. Host project
-files remain intact. Retrying without removal uses the original saved inputs.
-
-## 7. Stop or remove the VM
-
-Run from the project directory:
+Add the printed `Include` line near the beginning of `~/.ssh/config`, then run:
 
 ```sh
-vbx --stop
-vbx --remove
+vbx start --vscode
 ```
 
-Removal requires confirmation and deletes guest-local files. Host project files remain.
+Bare `vbx` uses VS Code by default. Use `vbx start --workspace-only` for a
+background VM or `vbx exec COMMAND [ARG...]` for a guest command.
 
-- [Command reference](docs/manuals/commands.md)
-- [Configuration](docs/manuals/configuration.md)
-- [Provisioning and credentials](docs/manuals/provisioning.md)
-- [Self-contained recipes](docs/manuals/recipes.md)
-- [Release notes](CHANGELOG.md)
-- [Documentation index](docs/README.md)
+### 5. Stop or recreate
+
+From the host, stop the VM when you are done:
+
+```sh
+vbx stop
+```
+
+Stopping preserves guest-local files and installed tools. Ready VMs retain their
+creation-time setup. To adopt configuration changes, [back up guest-local work](docs/manuals/persistence.md#back-up-guest-local-files),
+then run:
+
+```sh
+vbx remove
+vbx start --terminal
+```
+
+Removal requires confirmation and preserves host project files and explicitly
+[retained data](docs/manuals/persistence.md). See
+[troubleshooting](docs/manuals/troubleshooting.md) if creation fails.
+
+## Isolation and trust
+
+Guest commands run in a separate Linux VM. Writable host mounts (including the
+project), supplied credentials, and unrestricted guest networking remain exposed
+to guest programs. Setup scripts and installed tools have guest sudo access.
+Use a dedicated worktree for unattended agent runs and provide only needed
+mounts and credentials. Removing a VM does not undo host-file edits or revoke keys.
+See [trust and approval](docs/manuals/provisioning.md#trust-and-project-approval).
+
+## Documentation
+
+- [Quick reference](docs/manuals/quick-reference.md)
+- [Commands](docs/manuals/commands.md)
+- [Troubleshooting](docs/manuals/troubleshooting.md)
+- [All user manuals and contributor documentation](docs/README.md)
 
 ## License
 

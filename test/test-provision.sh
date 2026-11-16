@@ -47,7 +47,11 @@ done
 printf 'existing\n' > "$HOME/unrelated"
 printf 'ORDER=local\nSECRET=literal $() `command` '\'' quote\n' > "$T/local.env"
 printf 'ORDER=project\nEMPTY=\n' > "$T/project.env"
-perl "$ROOT/scripts/environment.pl" "$T/local.env" "$T/project.env" > "$T/bundle/environment.sh"
+cat > "$T/bundle/environment.sh" <<'ENV'
+export ORDER='project'
+export EMPTY=''
+export SECRET='literal $() `command` '\'' quote'
+ENV
 cat > "$T/bundle/project-setup.sh" <<'SH'
 set -euo pipefail
 [[ "$PWD" == "$TEST_ROOT/project" && "$ORDER" == project && -z "$EMPTY" ]]
@@ -97,73 +101,8 @@ run_guest > /dev/null
 cmp "$TEST_LOG" "$T/before"
 pass 'complete marker prevents any repeat provisioning, overlays, or project setup'
 
-for invalid in 'PATH=bad' 'VBX_INTERNAL=bad' 'XDG_CONFIG_HOME=bad' 'bad syntax' 'TOKEN="secret'; do
-    printf '%s\n' "$invalid" > "$T/bad.env"
-    if perl "$ROOT/scripts/environment.pl" "$T/bad.env" > /dev/null 2> "$T/error"; then exit 1; fi
-    ! grep -q 'secret' "$T/error"
-done
-printf 'TOKEN=$(touch %s)\n' "$T/pwned" > "$T/literal.env"
-perl "$ROOT/scripts/environment.pl" "$T/literal.env" > "$T/literal.sh"
-source "$T/literal.sh"
-[[ ! -e "$T/pwned" && "$TOKEN" == "\$(touch $T/pwned)" ]]
-pass 'environment parser rejects invalid input without leaking values and preserves shell syntax literally'
-
-printf 'version: 1\nmodules:\n  - pi\n  - pi\nenvFiles:\n  - local.env\n' > "$T/modules.yaml"
-printf 'version: 1\nmodules: []\nenvFiles:\n  - ../project.env\n' > "$T/project.yaml"
-perl "$ROOT/scripts/config.pl" "$T/project" /workspaces/project "$T/modules.yaml" "$T/project.yaml" > "$T/config"
-selected=(); env_files=()
-while IFS= read -r -d '' key; do
-    IFS= read -r -d '' value
-    if [[ "$key" == module ]]; then selected+=("$value"); fi
-    if [[ "$key" == envFile ]]; then env_files+=("$value"); fi
-done < "$T/config"
-[[ "${selected[*]}" == pi ]]
-[[ "${env_files[*]}" == "$T/local.env $T/project.env" ]]
-printf 'version: 1\nmodules:\n  - unknown\n' > "$T/modules.yaml"
-if perl "$ROOT/scripts/config.pl" "$T/project" /workspaces/project "$T/modules.yaml" "$T/project.yaml" > /dev/null 2>&1; then exit 1; fi
-pass 'recipe selection is explicit, additive, deduplicated, and restricted to bundled names'
-
-# Exercise the real archive/SSH bootstrap with Lima replaced by a local executor.
-cat > "$T/bin/limactl" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-[[ "$1" == shell && "$2" == --workdir=* ]]
-cd -- "${2#--workdir=}"
-shift 3
-[[ "$1" == -- ]]; shift
-exec "$@"
-SH
-chmod +x "$T/bin/limactl"
-cat > "$T/bundle/project-setup.sh" <<'SH'
-set -eu
-[[ "$ORDER" == project && "$PWD" == "$TEST_ROOT/project" ]]
-printf '%s\n' "$(dirname -- "$0")" > "$TEST_ROOT/guest-bundle-path"
-SH
-source "$ROOT/scripts/provision-host.sh"
-run() { "$@"; }
-NAME=transport
-PRIMARY="$T/project"
-STATE="$T/transport-state"
-mkdir "$STATE"
-cp "$ROOT/scripts/provision-guest.sh" "$T/bundle/provision.sh"
-tar -C "$T/bundle" -cf "$STATE/provision.tar" .
-provision_vm > "$T/transport-output"
-[[ -f "$HOME/.local/state/vbx/provision/transport/complete" ]]
-[[ ! -e $(< "$T/guest-bundle-path") ]]
-pass 'real SSH bootstrap consumes the archive, runs guest setup, and cleans read-only staging'
-
-# Execute the real command wrapper, checking environment and literal argv.
-source "$ROOT/vbx"
-NAME=transport
-PRIMARY="$T/project"
-argument="a b; \$(touch $T/pwned-launch)"
-(launch_guest bash -c '
-    [[ "$ORDER" == project && -z "$EMPTY" && -n "$SECRET" ]]
-    [[ "$PATH" == "$HOME/.local/bin:"* ]]
-    printf "%s" "$1"
-' vbx-test "$argument") > "$T/command-output"
-[[ $(< "$T/command-output") == "$argument" && ! -e "$T/pwned-launch" ]]
-pass 'managed commands load guest environment and local bin without evaluating arguments'
+# Host environment/config parsing, bundle transport, and argv tests live in
+# internal/config, internal/provision, internal/workspace, and internal/process.
 
 # Exercise the actual base script with every system write redirected to the fixture.
 base=
@@ -199,5 +138,4 @@ pass 'failed upgrade blocks base installation and completion; retry resumes setu
 while IFS= read -r -d '' file; do bash -n "$file"; done < <(
     find "$ROOT/scripts" "$ROOT/modules" -name '*.sh' -print0
 )
-perl -c "$ROOT/scripts/environment.pl"
 printf '%s provisioning offline checks passed.\n' "$passed"

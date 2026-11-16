@@ -3,7 +3,7 @@
 Run only the section matching the failed check, then rerun:
 
 ```sh
-vbx --check
+vbx check-host-prerequisites
 ```
 
 ## `limactl` missing
@@ -18,6 +18,7 @@ Install the latest stable Lima bundle in `$HOME/.local/lib/lima` and link its
 commands into `$HOME/.local/bin`:
 
 ```sh
+export PATH="$HOME/.local/bin:$PATH"
 prefix="$HOME/.local/lib/lima"
 archive="$(mktemp)"
 release_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/lima-vm/lima/releases/latest)" &&
@@ -31,11 +32,7 @@ release_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com
     limactl --version
 ```
 
-Ensure `$HOME/.local/bin` is in `PATH` before running the installed commands:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
+Add `$HOME/.local/bin` to your shell's persistent PATH.
 Keep the bundle's directory layout intact so Lima can locate its supporting files.
 
 ## `qemu-system-x86_64` or `qemu-img` missing
@@ -80,14 +77,6 @@ On Ubuntu/Debian:
 
 ```sh
 sudo apt-get --no-remove install openssh-client
-```
-
-## `perl`, `JSON::PP`, or `flock` missing
-
-On Ubuntu/Debian:
-
-```sh
-sudo apt-get --no-remove install perl util-linux
 ```
 
 ## `/dev/kvm` access missing

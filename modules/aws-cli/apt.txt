@@ -1,0 +1,6 @@
+ca-certificates
+curl
+gnupg
+groff
+less
+unzip

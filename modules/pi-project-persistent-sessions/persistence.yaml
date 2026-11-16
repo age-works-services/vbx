@@ -1,0 +1,4 @@
+persistence:
+  paths:
+    - guest: ~/.pi/agent/sessions
+      data: sessions
