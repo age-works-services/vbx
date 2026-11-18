@@ -27,6 +27,7 @@ bash test/test-apt.sh
 bash test/test-make.sh
 bash test/test-persistence.sh
 bash modules/aws-cli/test/test-aws-cli.sh
+bash modules/go/test/test-go.sh
 ```
 
 Go tests use temporary HOME/XDG paths, injected Lima/editor services, and local
@@ -34,7 +35,8 @@ Bash transport fixtures. Guest shell tests intercept APT and sudo and use
 synthetic modules to exercise VBX's provisioning sequence and retry behavior.
 Tests must not modify host packages, host `/etc`, private configuration, or real
 VMs. Module-specific tests live under their module directories. `make test` also
-runs `modules/*/test/test-*.sh`; the AWS CLI offline suite requires GnuPG.
+runs `modules/*/test/test-*.sh`. The AWS CLI offline suite requires GnuPG,
+and the Go module offline suite requires `jq`.
 Cross-builds check compilation only; VM operation requires Linux x86_64/KVM.
 
 ## Linux VM checks

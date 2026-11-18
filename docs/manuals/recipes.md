@@ -32,6 +32,7 @@ position. Select prerequisites before consumers, in the same or an earlier layer
 | --- | --- | --- |
 | `aws-cli` | AWS CLI v2 from AWS, with archive signature verification | None |
 | `dev-tools` | General development tools and GitHub CLI completion | None |
+| `go` | Official Go toolchain selected by the project’s Go files | None |
 | `node` | NodeSource bootstrap, Node/npm, user npm prefix and policy | None |
 | `pi` | Git, Pi CLI, subagents, prompt templates, CLI script approvals | Node/npm |
 | `pi-web-fetch` | Extension, Python/pipx, browser libraries, Chrome, AppArmor rule, rendering check | Pi |
@@ -49,6 +50,20 @@ the Node/npm prerequisite.
 editors, and network/process diagnostics. It also enables Bash completion for
 `gh`. See the [exact package list](../../modules/dev-tools/apt.txt).
 Select `postgresql-client` separately through `apt.packages` if needed.
+
+### Go
+
+Add `go` to the VBX `modules` list. Set the version in the project’s root
+`go.work` or `go.mod`. VBX reads `go.work` first when both exist. A `toolchain`
+directive such as `toolchain go1.25.3` selects that release. Otherwise, the
+`go` directive selects the release, with a patchless version such as `go 1.25`
+selecting the latest patch in that series. Without a version, the module installs
+the latest stable release.
+
+The module verifies the official Linux archive’s SHA-256 and exposes `go` and
+`gofmt` in `~/.local/bin`. Selection runs during VM provisioning. Go’s usual
+toolchain switching remains available while you work. For cgo builds that need
+a compiler, also select `dev-tools` or install the needed APT packages.
 
 ### Node
 

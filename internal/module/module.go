@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
-	"regexp"
 	"strings"
 	"vbx/internal/config"
 )
@@ -18,9 +17,7 @@ type Definition struct {
 	Paths []Path
 }
 
-var identifier = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-
-func ValidName(s string) bool           { return identifier.MatchString(s) }
+func ValidName(s string) bool           { return config.ValidModuleName(s) }
 func Relative(s string) bool            { return config.Relative(s) }
 func Overlap(a, b string) bool          { return config.Overlap(a, b) }
 func Validate(p Path) error             { return config.ValidatePath(p) }

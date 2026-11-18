@@ -24,8 +24,10 @@ All installer code stays in its owning module directory. Modules do not load
 installer code from the framework or sibling modules. The core provides generic
 transport, APT resolution, ordering, markers, and setup-wide npm enforcement.
 
-The closed registry in `internal/config/merge.go` accepts bundled names only. Adding a
-bundled module requires registering its identifier there.
+VBX discovers bundled modules from the embedded `modules/` directory. To add one,
+create `modules/<name>/` with the files above and rebuild VBX. Use a lowercase
+letter followed by lowercase letters, digits, or hyphens for the name. No code
+registration is required.
 Use `.vbx/setup.sh` for project-specific commands.
 
 The [AWS CLI module](../modules/aws-cli/README.md) downloads its installer from

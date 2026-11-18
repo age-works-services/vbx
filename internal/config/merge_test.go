@@ -24,6 +24,36 @@ func moduleFixture() fstest.MapFS {
 		"modules/pi/config.yaml":   {Data: []byte("version: 1\nresources:\n  cpus: 4\npersistence:\n  paths:\n    - guest: ~/.tool/sessions\n      data: pi-sessions\n")},
 	}
 }
+func TestModulesResolveFromAssets(t *testing.T) {
+	local, project := t.TempDir(), t.TempDir()
+	assets := fstest.MapFS{
+		"modules/new-tool/setup.sh": {},
+		"modules/new-tool/apt.txt":  {Data: []byte("make\n")},
+		"modules/not-a-directory":   {},
+	}
+	putSettings(t, project, ".vbx/config.yaml", "version: 1\nmodules:\n  - new-tool\n")
+	c, err := ResolveWithAssets(project, "/workspaces/project", local, assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(c.Modules, ",") != "new-tool" || strings.Join(c.APT, ",") != "make" {
+		t.Fatalf("resolved modules %v and APT %v", c.Modules, c.APT)
+	}
+	for _, tc := range []struct{ name, message string }{
+		{"node", "unknown bundled module"},
+		{"not-a-directory", "unknown bundled module"},
+		{"../new-tool", "invalid module identifier"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			putSettings(t, project, ".vbx/config.yaml", "version: 1\nmodules:\n  - "+tc.name+"\n")
+			_, err := ResolveWithAssets(project, "/workspaces/project", local, assets)
+			if err == nil || !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("got %v, want %q", err, tc.message)
+			}
+		})
+	}
+}
+
 func TestFiveLayerPrecedence(t *testing.T) {
 	for _, tc := range []struct{ name, global, project, cpu, data, owner string }{
 		{"defaults", "version: 1\n", "version: 1\n", "2", "", ""},

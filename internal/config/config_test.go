@@ -17,7 +17,12 @@ func TestLayers(t *testing.T) {
 	os.MkdirAll(filepath.Join(p, ".vbx"), 0700)
 	os.WriteFile(filepath.Join(local, "config.yaml"), []byte("version: 1\nresources:\n  cpus: 3\nmodules:\n  - pi\n  - node\napt:\n  packages:\n    - git\n    - 'nodejs (>= 22.19)'\n"), 0600)
 	os.WriteFile(filepath.Join(p, ".vbx/config.yaml"), []byte("version: 1\nresources:\n  cpus: 4\nmodules:\n  - pi\n  - pi-web-fetch\napt:\n  packages:\n    - git\n    - 'nodejs (<= 30)'\n"), 0600)
-	c, e := ResolveWithAssets(p, "/workspaces/project", local, fstest.MapFS{})
+	assets := fstest.MapFS{
+		"modules/pi/setup.sh":           {},
+		"modules/node/setup.sh":         {},
+		"modules/pi-web-fetch/setup.sh": {},
+	}
+	c, e := ResolveWithAssets(p, "/workspaces/project", local, assets)
 	if e != nil {
 		t.Fatal(e)
 	}
