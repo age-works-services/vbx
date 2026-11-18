@@ -174,12 +174,6 @@ func validateResolved(c Config, project, primary string) (Config, error) {
 		}
 		sources = append(sources, m.Source)
 	}
-	c.Modules = Unique(c.Modules)
-	for _, m := range c.Modules {
-		if !bundled(m) {
-			return c, fmt.Errorf("unknown bundled module %q", m)
-		}
-	}
 	c.APT = Unique(c.APT)
 	c.EnvFiles = Unique(c.EnvFiles)
 	if err := ValidatePersistence(c.Persistence); err != nil {

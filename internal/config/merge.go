@@ -75,16 +75,28 @@ func source(read func(string) ([]byte, error), root, base string) (Config, error
 	return c, nil
 }
 
+var moduleIdentifier = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+func ValidModuleName(name string) bool { return moduleIdentifier.MatchString(name) }
+
 // ModuleSettings reads embedded settings. Host paths must be absolute or home-relative.
 func ModuleSettings(assets fs.FS, name string) (Config, error) {
-	if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(name) {
+	if !ValidModuleName(name) {
 		return Config{}, fmt.Errorf("invalid module identifier %q", name)
 	}
-	c, err := source(func(p string) ([]byte, error) { return fs.ReadFile(assets, p) }, "modules/"+name, "")
+	root := path.Join("modules", name)
+	info, err := fs.Stat(assets, root)
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
+		return Config{}, fmt.Errorf("unknown bundled module %q", name)
+	}
+	if err != nil {
+		return Config{}, err
+	}
+	c, err := source(func(p string) ([]byte, error) { return fs.ReadFile(assets, p) }, root, "")
 	if err != nil {
 		return c, err
 	}
-	file := "modules/" + name + "/apt.txt"
+	file := root + "/apt.txt"
 	data, err := fs.ReadFile(assets, file)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return c, err
@@ -106,13 +118,6 @@ func ModuleSettings(assets fs.FS, name string) (Config, error) {
 		c.Persistence[i].Module = name
 	}
 	return c, nil
-}
-func bundled(name string) bool {
-	switch name {
-	case "aws-cli", "dev-tools", "node", "pi", "pi-web-fetch", "pi-project-persistent-sessions", "vscode-project-persistent-state":
-		return true
-	}
-	return false
 }
 func Resolve(project, primary, local string) (Config, error) {
 	return ResolveWithAssets(project, primary, local, vbx.Assets)
@@ -139,9 +144,6 @@ func ResolveWithAssets(project, primary, local string, assets fs.FS) (Config, er
 				continue
 			}
 			seen[name] = true
-			if !bundled(name) {
-				return fmt.Errorf("unknown bundled module %q", name)
-			}
 			p, err := ModuleSettings(assets, name)
 			if err != nil {
 				return err

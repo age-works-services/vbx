@@ -17,7 +17,7 @@ declarations, and any local helpers, policies, and functional checks. It does no
 shared installer directory.
 
 Users select prerequisites in order: `node`, `pi`, and optional `pi-web-fetch`.
-The core has a closed registry of bundled names. Project customization uses
+VBX resolves module names against the embedded `modules/` directory. Project customization uses
 `apt.packages`, home overlays, environment files, and `.vbx/setup.sh`.
 
 ## Native package-manager resolution

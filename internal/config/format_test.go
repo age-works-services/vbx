@@ -50,7 +50,8 @@ func TestFormatRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(local, "config.yaml"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveWithAssets(p, "/workspaces/project", local, fstest.MapFS{})
+	assets := fstest.MapFS{"modules/dev-tools/setup.sh": {}, "modules/node/setup.sh": {}}
+	got, err := ResolveWithAssets(p, "/workspaces/project", local, assets)
 	if err != nil {
 		t.Fatal(err)
 	}
