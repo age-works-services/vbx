@@ -16,6 +16,13 @@ func Render(assets fs.FS, c config.Config, p project.Project, bindings ...state.
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	var out strings.Builder
+	writeMount := func(host, guest string, writable, looseCache bool) {
+		fmt.Fprintf(&out, "  - location: %s\n    mountPoint: %s\n    writable: %t\n", quote(host), quote(guest), writable)
+		if looseCache {
+			// Reuse 9p inodes so guest-side file watchers can see edits.
+			out.WriteString("    9p:\n      cache: loose\n")
+		}
+	}
 	for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
 		switch {
 		case strings.HasPrefix(line, "cpus: "):
@@ -25,12 +32,13 @@ func Render(assets fs.FS, c config.Config, p project.Project, bindings ...state.
 		case strings.HasPrefix(line, "disk: "):
 			line = "disk: " + c.Disk
 		case line == "mounts: [] # VBX_PROJECT_MOUNT":
-			fmt.Fprintf(&out, "mounts:\n  - location: %s\n    mountPoint: %s\n    writable: true\n", quote(p.Path), quote(p.Primary))
+			out.WriteString("mounts:\n")
+			writeMount(p.Path, p.Primary, true, true)
 			for _, m := range c.Mounts {
-				fmt.Fprintf(&out, "  - location: %s\n    mountPoint: %s\n    writable: %t\n", quote(m.Source), quote(m.Target), !m.Readonly)
+				writeMount(m.Source, m.Target, !m.Readonly, !m.Readonly)
 			}
 			for _, b := range bindings {
-				fmt.Fprintf(&out, "  - location: %s\n    mountPoint: %s\n    writable: true\n", quote(b.Host), quote(b.Guest))
+				writeMount(b.Host, b.Guest, true, false)
 			}
 			continue
 		}

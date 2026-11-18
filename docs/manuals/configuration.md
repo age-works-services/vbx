@@ -122,6 +122,12 @@ explicit commands start there. VS Code opens that directory when no extra mounts
 exist, or `/workspaces` when additional directories are mounted. `launch.folder`
 overrides the editor folder only.
 
+New VMs use `cache: loose` on writable 9p workspace mounts so editors can
+receive file-change notifications for guest-side edits. Loose caching can
+make host-side changes temporarily stale inside the guest. Read-only mounts
+and retained-data mounts keep Lima's defaults. Existing VMs keep their current
+mount settings.
+
 Use two-space indentation and the block structure shown above. The parser
 supports plain scalars, single-quoted strings (escape `'` as `''`), JSON-compatible
 double-quoted strings, comments, and empty lists (`mounts: []`, `modules: []`,
